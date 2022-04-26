@@ -1,0 +1,7 @@
+- continuer spell wind
+- debug le monstre target en defense.
+- ajouter spell controle
+- ajouter spell shiled (par exemple quand on est proche d'un ennemie qui peut nous controler)
+- améliorer IA attaque
+
+- ref parties mazoize 42 mdr
