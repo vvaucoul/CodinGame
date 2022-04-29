@@ -12,3 +12,6 @@
     
     - Si un monstre est dans la base ennemmie et que le hero ne voit qu'un seul hero, le controler a tous les tours pour le faire sortir de la base
         - Puis aller vers le monstre pour le pousser
+    
+    - Si un monstre est dans la base et que les heros ennemies ne sont pas a sa portée, le pousser jusqu a la base ennemie
+        - Si ce monstre a beaucoup de vie et est dans la base ennemie, shield !
