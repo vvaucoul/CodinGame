@@ -4,4 +4,11 @@
 - ajouter spell shiled (par exemple quand on est proche d'un ennemie qui peut nous controler)
 - améliorer IA attaque
 
-- ref parties mazoize 42 mdr
+- strats Attaques:
+
+    - Se déplacer autour de la base
+    - S'il y a un monstre qui peut être dans la base ennemie avec le wind, le pousser
+        - S'il y a un hero ennemie a coté, le controler puis aller vers ce monstre pour le pousser jusqu'a la base ennemie
+    
+    - Si un monstre est dans la base ennemmie et que le hero ne voit qu'un seul hero, le controler a tous les tours pour le faire sortir de la base
+        - Puis aller vers le monstre pour le pousser
