@@ -15,3 +15,18 @@
     
     - Si un monstre est dans la base et que les heros ennemies ne sont pas a sa portée, le pousser jusqu a la base ennemie
         - Si ce monstre a beaucoup de vie et est dans la base ennemie, shield !
+
+
+1er silver algo
+    - Hero attaquant :
+        - des le premier tour, va au coordonnées : 13000 7500 et attend
+        - des qu'un monstre passe, il wind dans la base ennemie et le rewind de nouveau
+            - puis retourne en 13000 7500
+    
+    - Hero defense:
+        - focus le premier monster et le win
+        - win des qu'ils peuvent pour sortir les monstres
+
+
+
+[Modifier IA DEFENSE & améliorer IA ATTACK !] -> reprendre code de main backup before main change

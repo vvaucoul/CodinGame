@@ -1463,65 +1463,6 @@ static bool IA_Attack(Hero *hero)
     // else
     // {
 
-    // IA Silver
-    Point attack_destination = {13000, 7500};
-    if (BASE_IN_TOP_LEFT(_game.base_location) == false)
-        invert_location(&attack_destination, MIN_X, MAX_X, MIN_Y, MAX_Y);
-
-    float distance_to_location = DISTANCE(hero->location, attack_destination);
-
-    Entity *nearestEntity = findNearestEntityByLocation(_game.monsters, hero->location, HERO_VIEW_DISTANCE);
-
-    if (nearestEntity)
-    {
-        float distanceWind = DISTANCE(hero->location, nearestEntity->location);
-        Point baseEnnemyLocation = ENNEMY_BASE_LOCATION(_game.base_location);
-        Hero *ennemyHero = findNearestEnnemyHeroByLocationWithDistance(hero->location, HERO_VIEW_DISTANCE);
-        if (getEntityLength(sortEntitiesWithLocationByDistance(_game.monsters, hero->location, HERO_VIEW_DISTANCE)) > 2 || ennemyHero != NULL)
-        {
-            if (DISTANCE(hero->location, ENNEMY_BASE_LOCATION(_game.base_location)) <= VIEW_DISTANCE_BASE && _game.nb_turn >= 75)
-            {
-                if (hero->shield_life <= 0)
-                {
-                    if (HAS_ENOUGH_MANA())
-                    {
-                        heroAssignTask(hero, (Task){E_TASK_SPELL_SHIELD, hero->id, 0, 0, 0, 0});
-                        return (true);
-                    }
-                }
-            }
-        }
-        if (DISTANCE(nearestEntity->location, ENNEMY_BASE_LOCATION(_game.base_location)) <= (VIEW_DISTANCE_BASE / 2) && nearestEntity->health >= 16)
-        {
-            if (HAS_ENOUGH_MANA() && nearestEntity->shield_life <= 0)
-            {
-                heroAssignTask(hero, (Task){E_TASK_SPELL_SHIELD, nearestEntity->id, 0, 0, 0, 0});
-                return (true);
-            }
-        }
-        if (distanceWind <= DISTANCE_SPELL_WIND)
-        {
-            if (HAS_ENOUGH_MANA() && nearestEntity->shield_life <= 0)
-            {
-                heroAssignTask(hero, (Task){E_TASK_SPELL_WIND, 0, 0, 0, baseEnnemyLocation.x, baseEnnemyLocation.y});
-                return (true);
-            }
-        }
-        else
-        {
-            if (DISTANCE(nearestEntity->location, ENNEMY_BASE_LOCATION(_game.base_location)) >= (VIEW_DISTANCE_BASE / 3) && nearestEntity->shield_life <= 0)
-            {
-                heroAssignTask(hero, (Task){E_TASK_MOVE, 0, nearestEntity->location.x, nearestEntity->location.y, 0, 0});
-                return (true);
-            }
-        }
-    }
-    fprintf(stderr, "Distance to location: %f\n", distance_to_location);
-    heroAssignTask(hero, (Task){E_TASK_MOVE, 0, attack_destination.x, attack_destination.y});
-    return (true);
-
-    // IA maison pour  gold je pense
-    /*
     static size_t targetEntityID = -1;
     static Point lastEntityLocation = {-1, -1};
     static int turn_entity = 0;
@@ -1604,7 +1545,7 @@ static bool IA_Attack(Hero *hero)
 
     Entity *nearestEntity = findNearestEntityByLocation(_game.monsters, hero->location, DISTANCE_SPELL_WIND);
     Entity *entitiesNearestToHero = sortEntitiesWithLocationByDistance(_game.monsters, hero->location, HERO_VIEW_DISTANCE);
-
+    
     if (entitiesNearestToHero && getEntityLength(entitiesNearestToHero) == 1)
     {
         entitiesNearestToHero = sortEntitiesNotShielded(entitiesNearestToHero);
@@ -1654,8 +1595,6 @@ static bool IA_Attack(Hero *hero)
         heroSetTaskUninterrupted(hero, 0);
         return (true);
     }
-    */
-
     // Old IA
     /*
     float distance_to_ennemy_base = DISTANCE(ENNEMY_BASE_LOCATION(_game.base_location), hero->location);
@@ -1776,7 +1715,7 @@ int main()
 
             if (findNearestEntityByLocation(_game.monsters, hero->location, HERO_VIEW_DISTANCE) != NULL)
                 hero->saw_ennemy_first_time = true;
-            if (hero->saw_ennemy_first_time == false && hero->id != 0)
+            if (hero->saw_ennemy_first_time == false)
             {
                 Point location;
                 location = heroFirstMovementTillSeeEntity(hero);
@@ -1828,14 +1767,9 @@ int main()
                     continue;
                 }
                 // IA ATTACK
-                // fprintf(stderr, " Hero ID %d | Game Turn: %d >= %d\n", hero->id, _game.nb_turn, TURN_TO_ATTACK_ENNEMY_BASE);
-                // if (hero->id == 0 && (_game.nb_turn >= TURN_TO_ATTACK_ENNEMY_BASE ||
-                //                       DISTANCE(hero->location, ENNEMY_BASE_LOCATION(_game.base_location)) <= (VIEW_DISTANCE_BASE + HERO_VIEW_DISTANCE)))
-                // {
-                //     if ((IA_Attack(hero)) == true)
-                //         continue;
-                // }
-                if (hero->id == 0)
+                fprintf(stderr, " Hero ID %d | Game Turn: %d >= %d\n", hero->id, _game.nb_turn, TURN_TO_ATTACK_ENNEMY_BASE);
+                if (hero->id == 0 && (_game.nb_turn >= TURN_TO_ATTACK_ENNEMY_BASE ||
+                                      DISTANCE(hero->location, ENNEMY_BASE_LOCATION(_game.base_location)) <= (VIEW_DISTANCE_BASE + HERO_VIEW_DISTANCE)))
                 {
                     if ((IA_Attack(hero)) == true)
                         continue;
