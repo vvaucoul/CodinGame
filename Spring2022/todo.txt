@@ -28,5 +28,17 @@
         - win des qu'ils peuvent pour sortir les monstres
 
 
+Gold : Forcément 2 attaquants -> strat cannon
 
-[Modifier IA DEFENSE & améliorer IA ATTACK !] -> reprendre code de main backup before main change
+- Strats Gold : 
+    - Attaque:
+        - 2 attaquants -> farm au spawn des monstres
+        - une fois tour 50 passé ou 140 mana dépassé, -> les deux se déplacent aux coordonnées -> 11880 8200
+            - hero atk 1 : reste au coordonnées
+            - hero atk 2 : va récupérer des monstres du spawn avec le control vers les coordonnées -> 11880 8200
+            - s'il y a un monstre a coté -> hero 1 wind puis hero 2 wind puis hero1 rewind 
+        - si aucun monstre n'est a coté, retourne au spawn des monstres pour les envoyer vers les coordonnées -> 11880 8200
+
+    - Defense: 
+        - Si un hero ennemie est dans la base, se déplace vers lui
+        - si un monstre est plus proche par rapport à la base, se déplace vers le monstre
