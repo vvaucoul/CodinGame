@@ -42,6 +42,8 @@
 #define RANDOM(min, max) (rand() % (max - min + 1) + min)
 #define ENTITY_LEVEL(entity) (entity.health < 14 ? 0 : entity.health < 19 ? 1 \
                                                                           : 2)
+#define MAKE_LOCATION(x, y) \
+    BASE_IN_TOP_LEFT(_game.base_location) == false ? invert_location(&(Point){x, y}, MIN_X, MAX_X, MIN_Y, MAX_Y) : (Point) { x, y }
 #define HAS_ENOUGH_MANA() (_game.players[PLAYER_OWN].mana >= MANA_TO_CAST_SPELL)
 #define TURN_TO_REACH_BASE(entity) (DISTANCE(entity->location, _game.base_location) / MONSTER_SPEED)
 
@@ -51,8 +53,13 @@
 #define EMPTY_ENTITY() \
     (Entity) { -1 }
 
-#define IS_HERO_ATTAQUANT(hero) (hero->id <= 1)
+#define IS_HERO_ATTAQUANT(hero) (hero->id == 0 || hero->id == 1)
 #define IS_HERO_DEFENCE(hero) (hero->id == 2)
+
+#define TARGET_WIND_DESTINATION() \
+    BASE_IN_TOP_LEFT(_game.base_location) == true ? invert_location(&(Point){200, 150}, MIN_X, MAX_X, MIN_Y, MAX_Y) : (Point) { 200, 150 }
+#define TARGET_ATTACK_LOCATION \
+    (Point) { 11800, 8200 }
 
 enum e_task
 {
@@ -188,7 +195,7 @@ Point generateRandomPointInCircleWithMinMax(Point center, int radius, float dist
     }
     return (point);
 }
-Point findBestPointByEntities(Entity *entities, Hero *hero)
+Point findBestPointByEntities(Entity *entities)
 {
     Point best_point = {0, 0};
     size_t i = 0;
@@ -397,6 +404,43 @@ Entity *sortEntitiesNotThreatFor(Entity *entity, int threat_for)
         if (entity[i].threat_for != threat_for)
         {
             sorted_entities[nb_entities] = entity[i];
+            nb_entities++;
+        }
+    }
+    return (sorted_entities);
+}
+Entity *sortEntitiesThreatFor(Entity *entities, int threat_for)
+{
+    if (!entities || NO_MONSTERS_VIEWED())
+        return (NULL);
+
+    Entity *sorted_entities = malloc(sizeof(Entity) * (_game.nb_monsters + 1));
+    memset(sorted_entities, 0, sizeof(Entity) * (_game.nb_monsters + 1));
+    int nb_entities = 0;
+    for (size_t i = 0; IS_VALID_ENTITY(entities[i]); i++)
+    {
+        if (entities[i].threat_for == threat_for)
+        {
+            sorted_entities[nb_entities] = entities[i];
+            nb_entities++;
+        }
+    }
+    return (sorted_entities);
+}
+Entity *sortEntitiesByMinDistance(Entity *entities, Point location, float min_distance)
+{
+    if (!entities || NO_MONSTERS_VIEWED())
+        return (NULL);
+
+    Entity *sorted_entities = malloc(sizeof(Entity) * (_game.nb_monsters + 1));
+    memset(sorted_entities, 0, sizeof(Entity) * (_game.nb_monsters + 1));
+    int nb_entities = 0;
+    for (size_t i = 0; IS_VALID_ENTITY(entities[i]); i++)
+    {
+        float distance = DISTANCE(location, entities[i].location);
+        if (distance > min_distance)
+        {
+            sorted_entities[nb_entities] = entities[i];
             nb_entities++;
         }
     }
@@ -616,7 +660,12 @@ Point getEntityLocationAfterWind(Entity *entity, Point wind_destination, float d
 void heroAssignTask(Hero *hero, Task task)
 {
     if (hero->uninterupt_task == false)
+    {
         hero->task = task;
+        if (task.type == E_TASK_SPELL_CONTROL || task.type == E_TASK_SPELL_SHIELD || task.type == E_TASK_SPELL_WIND)
+            _game.players[PLAYER_OWN].mana -= 10;
+        fprintf(stderr, "\t\t- Game MANA: %d\n", _game.players[PLAYER_OWN].mana);
+    }
 }
 void heroSetTaskUninterrupted(Hero *hero, int nb_turn_max)
 {
@@ -901,6 +950,24 @@ Hero *sortEnnemyHeroesByDistanceWithLocation(Point location, float dist_max)
     }
     return (sorted_heroes);
 }
+Hero *sortEnnemyHeroesNotControlled(Hero *heroes)
+{
+    Hero *sorted_heroes = malloc(sizeof(Hero) * _game.nb_heroes + 1);
+    memset(sorted_heroes, 0, sizeof(Hero) * _game.nb_heroes + 1);
+    sorted_heroes[0].id = -1;
+    int nb_heroes = 0;
+    for (int i = 0; i < _game.nb_heroes; i++)
+    {
+        Hero *hero = &heroes[i];
+        if (hero->id != -1 && hero->is_controlled == false)
+        {
+            sorted_heroes[nb_heroes] = *hero;
+            sorted_heroes[nb_heroes + 1].id = -1;
+            nb_heroes++;
+        }
+    }
+    return (sorted_heroes);
+}
 Hero *sortHeroesByDistanceWithLocation(Point location, float dist_max)
 {
     Hero *sorted_heroes = malloc(sizeof(Hero) * _game.nb_heroes + 1);
@@ -941,6 +1008,15 @@ Hero *findNearestHeroByLocationWithDistance(Hero *heroes, Point location, float 
     }
     return (nearest_hero);
 }
+Hero *getHeroByID(size_t id)
+{
+    for (int i = 0; i < _game.nb_heroes; i++)
+    {
+        if (_game.heroes[i].id == id)
+            return (&_game.heroes[i]);
+    }
+    return (NULL);
+}
 bool heroAnotherHeroWillDoTask(Hero *hero, int *heroes_id_to_find, enum e_task task)
 {
     for (int i = 0; i < _game.nb_heroes; i++)
@@ -966,6 +1042,21 @@ size_t getHeroesLength(Hero *heroes)
     for (size_t i = 0; heroes[i].id >= 0; i++)
         length++;
     return (length);
+}
+size_t getEnnemyHeroesInBase()
+{
+    Hero *heroes = _game.ennemy_heroes;
+    float distance_base = BASE_RANGE;
+
+    size_t nb_heroes = 0;
+    for (size_t i = 0; i < _game.nb_heroes && IS_VALID_HERO(heroes[i]); i++)
+    {
+        if (heroes[i].id == -1)
+            break;
+        if (DISTANCE(heroes[i].location, _game.base_location) <= distance_base)
+            nb_heroes++;
+    }
+    return (nb_heroes);
 }
 
 // Game Functions
@@ -1238,34 +1329,28 @@ static bool IA_DefenseBase(Hero *hero)
         {
             fprintf(stderr, "--- SPELL WIND ---\n");
             Entity *entities_can_be_winded = sortEntitiesWithLocationByDistance(_game.monsters, hero->location, DISTANCE_SPELL_WIND);
-            // fprintf(stderr, "NB entities can be winded: %ld\n", getEntityLength(entities_can_be_winded));
             entities_can_be_winded = sortEntitiesNotShielded(entities_can_be_winded);
-            // fprintf(stderr, "NB entities can be winded without shield: %ld\n", getEntityLength(entities_can_be_winded));
             Hero *ennemy_heroes_can_be_winded = sortEnnemyHeroesByDistanceWithLocation(hero->location, DISTANCE_SPELL_WIND);
-            // fprintf(stderr, "NB ennemy heroes can be winded: %ld\n", getHeroesLength(ennemy_heroes_can_be_winded));
             size_t nb_entities_can_be_winded = getEntityLength(entities_can_be_winded) + getHeroesLength(ennemy_heroes_can_be_winded);
-            bool another_hero_will_wind = false;
-            for (size_t i = 0; i < _game.nb_heroes; i++)
-            {
-                Hero *ce = &_game.heroes[i];
+            bool ennemy_is_in_critical_base_range = (findNearestEntityByLocation(entities_can_be_winded, _game.base_location, CRITICAL_BASE_RANGE) != NULL);
 
-                if (ce->task.type == E_TASK_SPELL_WIND)
+            bool ennemyHeroCanWindEntity = false;
+            Hero *ennemyHeroesInBase = sortEnnemyHeroesByDistanceWithLocation(_game.base_location, VIEW_DISTANCE_BASE);
+            if (ennemyHeroesInBase)
+            {
+                Hero *nearestHero = findNearestHeroByLocationWithDistance(_game.ennemy_heroes, hero->location, VIEW_DISTANCE_BASE);
+                if (nearestHero)
                 {
-                    if (DISTANCE(ce->location, hero->location) <= DISTANCE_SPELL_WIND / 2)
-                    {
-                        another_hero_will_wind = true;
-                        break;
-                    }
+                    Entity *nearestEntityToHero = findNearestEntityByLocation(_game.monsters, nearestHero->location, HERO_VIEW_DISTANCE);
+                    ennemyHeroCanWindEntity = (nearestEntityToHero != NULL);
                 }
             }
-            // fprintf(stderr, "Another hero will wind: %d\n", another_hero_will_wind);
-            bool ennemy_is_in_critical_base_range = (findNearestEntityByLocation(entities_can_be_winded, _game.base_location, CRITICAL_BASE_RANGE) != NULL);
-            if (another_hero_will_wind == false || (ennemy_is_in_critical_base_range == true && nb_entities_can_be_winded > 1))
+            if ((ennemy_is_in_critical_base_range == true && nb_entities_can_be_winded > 1) ||
+                (nb_entities_can_be_winded >= 1 && getHeroesLength(ennemy_heroes_can_be_winded) >= 1))
             {
-                // fprintf(stderr, "\t - Number of entities in range : %ld\n", nb_entities_can_be_winded);
                 if (nb_entities_can_be_winded >= 3)
                 {
-                    Point location = ENNEMY_BASE_LOCATION(_game.base_location);
+                    Point location = TARGET_WIND_DESTINATION();
                     heroAssignTask(hero, (Task){E_TASK_SPELL_WIND, 0, 0, 0, location.x, location.y});
                     return (true);
                 }
@@ -1275,14 +1360,32 @@ static bool IA_DefenseBase(Hero *hero)
                     float distance_to_hero = DISTANCE(entities_can_be_winded[i].location, hero->location);
                     float distance_to_base = DISTANCE(entities_can_be_winded[i].location, _game.base_location);
 
-                    // fprintf(stderr, "Distance Entity [%d] to base : %f\n", entities_can_be_winded[i].id, distance_to_base);
                     if (distance_to_base < CRITICAL_BASE_RANGE && nb_entities_can_be_winded > 0)
                     {
-                        Point location = ENNEMY_BASE_LOCATION(_game.base_location);
+                        Point location = TARGET_WIND_DESTINATION();
                         heroAssignTask(hero, (Task){E_TASK_SPELL_WIND, 0, 0, 0, location.x, location.y});
 
                         return (true);
                     }
+                }
+            }
+
+            if (HAS_ENOUGH_MANA())
+            {
+                if ((ennemy_is_in_critical_base_range && getHeroesLength(ennemy_heroes_can_be_winded) >= 1) ||
+                    getEntityLength(entities_can_be_winded) >= 2)
+                {
+                    Point location = TARGET_WIND_DESTINATION();
+                    fprintf(stderr, "\t- Spell Wind [0]\n");
+                    heroAssignTask(hero, (Task){E_TASK_SPELL_WIND, 0, 0, 0, location.x, location.y});
+                    return (true);
+                }
+                if (getHeroesLength(ennemy_heroes_can_be_winded) >= 1 && ennemyHeroCanWindEntity == true && getEntityLength(entities_can_be_winded) >= 1)
+                {
+                    Point location = TARGET_WIND_DESTINATION();
+                    fprintf(stderr, "\t- Spell Wind [1]\n");
+                    heroAssignTask(hero, (Task){E_TASK_SPELL_WIND, 0, 0, 0, location.x, location.y});
+                    return (true);
                 }
             }
         }
@@ -1295,34 +1398,24 @@ static bool IA_DefenseBase(Hero *hero)
         if (HAS_ENOUGH_MANA())
         {
             fprintf(stderr, "--- SPELL SHIELD ---\n");
-            // fprintf(stderr, "Hero [%d]\n", hero->id);
             Hero *heroes_can_be_shielded = sortHeroesByDistanceWithLocation(hero->location, DISTANCE_SPELL_SHIELD);
+            Entity *entitiesInBase = sortEntitiesWithLocationByDistance(_game.monsters, _game.base_location, VIEW_DISTANCE_BASE);
             size_t nb_heroes_can_be_shielded = getHeroesLength(heroes_can_be_shielded);
-            // fprintf(stderr, "Sorted heroes [0 = %d] [1 = %d] \n", heroes_can_be_shielded[0].id, heroes_can_be_shielded[1].id);
 
-            // fprintf(stderr, "\t - Number of heroes in range : %ld\n", nb_heroes_can_be_shielded);
-            if (nb_heroes_can_be_shielded > 0)
+            if (nb_heroes_can_be_shielded > 0 && getEntityLength(entitiesInBase) <= 0)
             {
                 Hero *nearestHero = findNearestHeroByLocationWithDistance(heroes_can_be_shielded, hero->location, DISTANCE_SPELL_SHIELD);
-                // fprintf(stderr, "\t - Nearest hero : %d\n", nearestHero == NULL ? -1 : nearestHero->id);
                 if (nearestHero == NULL)
                     break;
                 Entity *entitiesNearestToHero = sortEntitiesWithLocationByDistance(_game.monsters, nearestHero->location, HERO_VIEW_DISTANCE);
-                // fprintf(stderr, "\t - Enties nearest to hero : %ld\n", getEntityLength(entitiesNearestToHero));
                 Hero *ennemyHeroes = sortEnnemyHeroesByDistanceWithLocation(hero->location, DISTANCE_SPELL_SHIELD);
-                // fprintf(stderr, "\t - Ennemy heroes : %ld\n", getHeroesLength(ennemyHeroes));
                 size_t nb_ennemy_heroes = getHeroesLength(ennemyHeroes);
-                // fprintf(stderr, "\t - Number of ennemy heroes in range : %ld\n", nb_ennemy_heroes);
                 Hero *nearestEnnemyHero = findNearestEnnemyHeroByLocationWithDistance(hero->location, DISTANCE_SPELL_SHIELD);
-                // fprintf(stderr, "\t - Nearest ennemy hero : %d\n", nearestEnnemyHero ? nearestEnnemyHero->id : -1);
                 if (nearestEnnemyHero == NULL)
                     break;
                 Entity *entitiesNearestToEnnemyHero = sortEntitiesWithLocationByDistance(_game.monsters, nearestEnnemyHero->location, HERO_VIEW_DISTANCE);
-                // fprintf(stderr, "\t - Enties nearest to ennemy hero : %ld\n", getEntityLength(entitiesNearestToEnnemyHero));
                 size_t nbEntitiesNearToEnnemyHero = getEntityLength(entitiesNearestToEnnemyHero);
-                // fprintf(stderr, "\t - Number of entities near to ennemy hero : %ld\n", nbEntitiesNearToEnnemyHero);
                 Hero *nearestHeroToEnnemyHero = findNearestHeroByLocationWithDistance(_game.heroes, nearestEnnemyHero->location, DISTANCE_SPELL_SHIELD);
-                // fprintf(stderr, "\t - Nearest hero to ennemy hero : %d\n", nearestHeroToEnnemyHero ? nearestHeroToEnnemyHero->id : -1);
 
                 if (nearestEnnemyHero != NULL)
                 {
@@ -1377,19 +1470,38 @@ static bool IA_DefenseBase(Hero *hero)
         break;
     } while (1);
 
+    // Follow Ennemy Hero
+    do
+    {
+        fprintf(stderr, "--- FOLLOW ENNEMY HERO ---\n");
+        Hero *ennemyHero = sortEnnemyHeroesByDistanceWithLocation(_game.base_location, VIEW_DISTANCE_BASE + HERO_VIEW_DISTANCE);
+        Entity *entitiesInBase = sortEntitiesWithLocationByDistance(_game.monsters, _game.base_location, VIEW_DISTANCE_BASE);
+        entitiesInBase = sortEntitiesNotThreatFor(entitiesInBase, 1);
+        if (ennemyHero == NULL)
+            break;
+        else
+        {
+            fprintf(stderr, "\t- NB monsters in Base: %ld\n", getEntityLength(entitiesInBase));
+            if (getEntityLength(entities_in_base) <= 0)
+            {
+                fprintf(stderr, "\t- Follow Ennemy Hero : %d\n", ennemyHero->id);
+                heroAssignTask(hero, (Task){E_TASK_MOVE, ennemyHero->id, ennemyHero->location.x, ennemyHero->location.y, 0, 0});
+                return (true);
+            }
+        }
+        break;
+    } while (1);
+
     TPair best_action = {0, 0};
     for (size_t i = 0; i < 6; i++)
     {
-        // fprintf(stderr, "Task %ld : %f\n", i, best_actions[i].value);
         if (best_actions[i].value > best_action.value)
             best_action = best_actions[i];
     }
-    // fprintf(stderr, "Best action : %d\n", best_action.task.type);
-    // fprintf(stderr, "Best action value : %f\n", best_action.value);
+    fprintf(stderr, "\t- Best action Attack : %d -> %d\n", best_action.task.type, best_action.task.target_id);
     if (best_action.task.type == E_TASK_WAIT || best_action.value <= 0)
         return (false);
     heroAssignTask(hero, best_action.task);
-    // fprintf(stderr, "Hero [%d] assigned task : %d\n", hero->id, best_action.task.type);
     return (true);
     // do best action
 
@@ -1495,95 +1607,364 @@ static bool IA_DefenseBase(Hero *hero)
 }
 static bool IA_Attack(Hero *hero)
 {
-    Entity *nearestEntityToHeroZero = findNearestEntityByLocation(_game.monsters, _game.heroes[0].location, HERO_VIEW_DISTANCE);
+    Hero *heroZero = getHeroByID(0);
+    Hero *heroOne = getHeroByID(1);
+    static bool heroZeroHasBeenForcedToWind = false;
+    static bool heroZeroForceMoveToBase = false;
+
+    if (hero->id == 0)
+    {
+        if (heroZeroForceMoveToBase == true)
+        {
+            Entity *nearestEntityToEnnemyBase = findNearestEntityByLocation(_game.monsters, ENNEMY_BASE_LOCATION(_game.base_location), HERO_VIEW_DISTANCE);
+
+            if (nearestEntityToEnnemyBase)
+            {
+                if (DISTANCE(nearestEntityToEnnemyBase->location, ENNEMY_BASE_LOCATION(_game.base_location)) <= (CRITICAL_BASE_RANGE - 1000 + 200) &&
+                    nearestEntityToEnnemyBase->health >= 10)
+                {
+                    heroAssignTask(hero, (Task){E_TASK_SPELL_SHIELD, nearestEntityToEnnemyBase->id, 0, 0});
+                    return (true);
+                }
+                heroAssignTask(hero, (Task){E_TASK_MOVE, nearestEntityToEnnemyBase->id, 0, 0});
+                return (true);
+            }
+            Point destination = MAKE_LOCATION(15750, 8200);
+            heroAssignTask(hero, (Task){E_TASK_MOVE, 0, destination.x, destination.y});
+            heroZeroForceMoveToBase = false;
+            return (true);
+        }
+        if (heroZeroHasBeenForcedToWind == true)
+        {
+            Entity *EntitiesHeroSee = sortEntitiesWithLocationByDistance(_game.monsters, hero->location, HERO_VIEW_DISTANCE);
+            Entity *entitiesInEnnemyBase = sortEntitiesWithLocationByDistance(EntitiesHeroSee, ENNEMY_BASE_LOCATION(_game.base_location), BASE_RANGE - 1000);
+
+            size_t EntityAffectedByWind = getEntityLength(sortEntitiesWithLocationByDistance(EntitiesHeroSee, hero->location, DISTANCE_SPELL_WIND));
+            if (getEntityLength(entitiesInEnnemyBase) > 0 && EntityAffectedByWind > 0)
+            {
+                Point destination = TARGET_WIND_DESTINATION();
+                fprintf(stderr, "   - Spell Wind [%d]\n", entitiesInEnnemyBase[0].id);
+                heroAssignTask(hero, (Task){E_TASK_SPELL_WIND, 0, 0, 0, destination.x, destination.y});
+                return (true);
+            }
+            if (getEntityLength(EntitiesHeroSee) <= 0)
+                heroZeroHasBeenForcedToWind = false;
+            else
+            {
+                Point destination = MAKE_LOCATION(15750, 8200);
+                heroAssignTask(hero, (Task){E_TASK_MOVE, 0, destination.x, destination.y});
+                return (true);
+            }
+        }
+    }
+    else if (hero->id == 1)
+    {
+        Entity *EntitiesHeroSee = sortEntitiesWithLocationByDistance(_game.monsters, hero->location, HERO_VIEW_DISTANCE);
+
+        // Help hero zero to wind in ennemy base
+        {
+            Entity *entitiesCanBeWinded = sortEntitiesWithLocationByDistance(EntitiesHeroSee, hero->location, DISTANCE_SPELL_WIND);
+            entitiesCanBeWinded = sortEntitiesNotShielded(entitiesCanBeWinded);
+            entitiesCanBeWinded = sortEntitiesThreatFor(entitiesCanBeWinded, 2);
+            if (DISTANCE(heroZero->location, ENNEMY_BASE_LOCATION(_game.base_location)) < BASE_RANGE &&
+                getEntityLength(entitiesCanBeWinded) <= 1)
+            {
+                heroAssignTask(hero, (Task){E_TASK_MOVE, 0, heroZero->location.x, heroZero->location.y});
+                return (true);
+            }
+        }
+
+        // Spell Wind Attack with hero zero
+        if (HAS_ENOUGH_MANA())
+        {
+            Entity *entitiesCanBeWinded = sortEntitiesWithLocationByDistance(EntitiesHeroSee, hero->location, DISTANCE_SPELL_WIND);
+            entitiesCanBeWinded = sortEntitiesNotShielded(entitiesCanBeWinded);
+            float distanceToHeroZero = DISTANCE(hero->location, getHeroByID(0)->location);
+            float HeroZeroIsInEnnemyBase = DISTANCE(heroZero->location, ENNEMY_BASE_LOCATION(_game.base_location));
+
+            // Wait en attente de plus de monstres dans le champs d'action du spell wind
+            {
+                Entity *EntitiesThreatForEnnemyBase = sortEntitiesThreatFor(EntitiesHeroSee, 2);
+                size_t nbEntitiesThreatForEnnemyBase = getEntityLength(EntitiesThreatForEnnemyBase);
+                float SumOfDistanceToAttackPoint = findDistanceByEntitiesWithLocation(EntitiesThreatForEnnemyBase, TARGET_ATTACK_LOCATION);
+
+                fprintf(stderr, "\t- NB Entities threat for ennemy base: %ld\n", nbEntitiesThreatForEnnemyBase);
+                fprintf(stderr, "\t- NB Entitie hero see: %ld\n", getEntityLength(EntitiesHeroSee));
+                fprintf(stderr, "\t- SumOfDistanceToAttackPoint: %f\n", SumOfDistanceToAttackPoint);
+
+                // if ((nbEntitiesThreatForEnnemyBase - 2) <= getEntityLength(EntitiesHeroSee) &&
+                //     SumOfDistanceToAttackPoint > DISTANCE_SPELL_WIND &&
+                //     getEntityLength(entitiesCanBeWinded) <= nbEntitiesThreatForEnnemyBase - 2 &&
+                //     DISTANCE(hero->location, TARGET_ATTACK_LOCATION) <= HERO_VIEW_DISTANCE)
+                if (SumOfDistanceToAttackPoint > DISTANCE_SPELL_WIND && DISTANCE(hero->location, TARGET_ATTACK_LOCATION) <= 200)
+                {
+                    heroAssignTask(hero, (Task){E_TASK_WAIT, 0, 0, 0, 0, 0});
+                    return (true);
+                }
+            }
+
+            if (getEntityLength(entitiesCanBeWinded) > 0 && distanceToHeroZero <= (DISTANCE_SPELL_WIND / 2) &&
+                DISTANCE(hero->location, TARGET_ATTACK_LOCATION) <= HERO_VIEW_DISTANCE)
+            {
+                Point destination = TARGET_WIND_DESTINATION();
+                fprintf(stderr, "   - Spell Wind [%d]\n", entitiesCanBeWinded[0].id);
+                heroAssignTask(hero, (Task){E_TASK_SPELL_WIND, 0, 0, 0, destination.x, destination.y});
+
+                // Force Hero Zero wind
+                if (heroZeroHasBeenForcedToWind == false)
+                {
+                    heroForceInterruptTask(heroZero);
+                    heroAssignTask(heroZero, (Task){E_TASK_SPELL_WIND, 0, 0, 0, destination.x, destination.y});
+                    heroZeroHasBeenForcedToWind = true;
+                    heroZeroForceMoveToBase = true;
+                }
+                return (true);
+            }
+            else if (getEntityLength(entitiesCanBeWinded) > 0 && HeroZeroIsInEnnemyBase <= BASE_RANGE - (1000 / 2))
+            {
+                Point destination = TARGET_WIND_DESTINATION();
+                fprintf(stderr, "   - Spell Wind [%d]\n", entitiesCanBeWinded[0].id);
+                heroAssignTask(hero, (Task){E_TASK_SPELL_WIND, 0, 0, 0, destination.x, destination.y});
+                return (true);
+            }
+        }
+
+        // Control entity to attack location
+        if (HAS_ENOUGH_MANA())
+        {
+            Entity *entitiesCanBeControlled = sortEntitiesNotShielded(EntitiesHeroSee);
+            entitiesCanBeControlled = sortEntitiesNotControled(entitiesCanBeControlled);
+            entitiesCanBeControlled = sortEntitiesNotThreatFor(entitiesCanBeControlled, 2);
+
+            Entity *entitiesThreatForEnnemyBase = sortEntitiesThreatFor(EntitiesHeroSee, 2);
+
+            fprintf(stderr, "Entities threat for ennemy base: %ld\n", getEntityLength(entitiesThreatForEnnemyBase));
+            fprintf(stderr, "   - Entities can be controlled: %ld\n", getEntityLength(entitiesCanBeControlled));
+            for (int i = 0; i < getEntityLength(entitiesCanBeControlled); i++)
+                fprintf(stderr, "   - Entity can be controlled: %d\n", entitiesCanBeControlled[i].id);
+
+            Entity *nearestEntity = findNearestEntityByLocation(entitiesCanBeControlled, hero->location, DISTANCE_SPELL_CONTROL);
+            fprintf(stderr, "   - Nearest entity: %d\n", nearestEntity ? nearestEntity->id : -1);
+            if (nearestEntity && getEntityLength(entitiesThreatForEnnemyBase) <= 4)
+            {
+                Point destination = TARGET_ATTACK_LOCATION;
+                fprintf(stderr, "   - Spell Control [%d]\n", nearestEntity->id);
+                heroAssignTask(hero, (Task){E_TASK_SPELL_CONTROL, nearestEntity->id, destination.x, destination.y, 0, 0});
+                return (true);
+            }
+        }
+    }
+
+    /*
+    static bool heroZeroForceWind = false;
+
+    Entity *nearestEntityToHeroZero = findNearestEntityByLocation(_game.monsters, getHeroByID(0)->location, HERO_VIEW_DISTANCE);
     if (hero->id == 1)
     {
-        Entity *nearestEntity = findNearestEntityByLocation(_game.monsters, hero->location, HERO_VIEW_DISTANCE);
+        Entity *entitiesNearestToHero = sortEntitiesWithLocationByDistance(_game.monsters, hero->location, HERO_VIEW_DISTANCE);
+        entitiesNearestToHero = sortEntitiesNotShielded(entitiesNearestToHero);
+        entitiesNearestToHero = sortEntitiesNotThreatFor(entitiesNearestToHero, 2);
+        entitiesNearestToHero = sortEntitiesNotControled(entitiesNearestToHero);
+
+        Entity *entitiesNearestToHeroZero = sortEntitiesWithLocationByDistance(_game.monsters, getHeroByID(0)->location, HERO_VIEW_DISTANCE);
+        entitiesNearestToHeroZero = sortEntitiesThreatFor(entitiesNearestToHeroZero, 2);
+        fprintf(stderr, "   - Entities nearest to hero zero: %ld\n", getEntityLength(entitiesNearestToHero));
+
+        if (DISTANCE(hero->location, getHeroByID(0)->location) <= HERO_VIEW_DISTANCE &&
+            getEntityLength(entitiesNearestToHeroZero) >= 2 && getEntityLength(entitiesNearestToHero) >= 1 && HAS_ENOUGH_MANA())
+        {
+            fprintf(stderr, "\t- Hero[1] WIND\n");
+            Point destination = TARGET_WIND_DESTINATION();
+            heroAssignTask(hero, (Task){E_TASK_SPELL_WIND, 0, 0, 0, destination.x, destination.y});
+            heroZeroForceWind = true;
+            return (true);
+        }
+
+        if (getEntityLength(entitiesNearestToHero) >= 4)
+        {
+            Point destination = getHeroByID(0)->location;
+            fprintf(stderr, "\t- Hero[1] MOVE [0] TO %d %d\n", destination.x, destination.y);
+            heroAssignTask(hero, (Task){E_TASK_MOVE, 0, destination.x, destination.y, 0, 0});
+            return (true);
+        }
+
+        Entity *nearestEntity = findNearestEntityByLocation(entitiesNearestToHero, hero->location, HERO_VIEW_DISTANCE);
         if (nearestEntity != NULL)
         {
-            if (nearestEntity->threat_for != 2)
+            if (nearestEntity->threat_for != 2 && HAS_ENOUGH_MANA())
             {
-                heroAssignTask(hero, (Task){E_TASK_SPELL_CONTROL, nearestEntity->id, 11880, 8200, 0, 0});
+                Point destination = MAKE_LOCATION(11800, 8200);
+                fprintf(stderr, "\t- Hero[1] Control %d\n", nearestEntity->id);
+                heroAssignTask(hero, (Task){E_TASK_SPELL_CONTROL, nearestEntity->id, destination.x, destination.y, 0, 0});
                 return (true);
             }
         }
         if (!nearestEntityToHeroZero)
         {
-            Point destination = (Point){4600, 7000};
+            Point destination = MAKE_LOCATION(4600, 7000);
+            fprintf(stderr, "\t- Hero[1] MOVE [1] TO %d %d\n", destination.x, destination.y);
             heroAssignTask(hero, (Task){E_TASK_MOVE, 0, destination.x, destination.y, 0, 0});
             return (true);
         }
-        else if (DISTANCE(hero->location, _game.heroes[0].location) > (DISTANCE_SPELL_WIND / 2))
+        else if (DISTANCE(hero->location, getHeroByID(0)->location) > (DISTANCE_SPELL_WIND / 2))
         {
-            Point destination = _game.heroes[0].location;
+            Point destination = getHeroByID(0)->location;
+            fprintf(stderr, "\t- Hero[1] MOVE [2] TO %d %d\n", destination.x, destination.y);
             heroAssignTask(hero, (Task){E_TASK_MOVE, 0, destination.x, destination.y, 0, 0});
             return (true);
         }
     }
-
-    Entity *nearestEntity = findNearestEntityByLocation(_game.monsters, hero->location, DISTANCE_SPELL_WIND);
-    Entity *entitiesNearestToHero = sortEntitiesWithLocationByDistance(_game.monsters, hero->location, HERO_VIEW_DISTANCE);
-
-    if (entitiesNearestToHero && getEntityLength(entitiesNearestToHero) == 1)
+    else if (hero->id == 0)
     {
-        entitiesNearestToHero = sortEntitiesNotShielded(entitiesNearestToHero);
-        entitiesNearestToHero = sortEntitiesNotControled(entitiesNearestToHero);
-        nearestEntity = findNearestEntityByLocation(entitiesNearestToHero, hero->location, DISTANCE_SPELL_CONTROL);
-        fprintf(stderr, "\t- Nearest entity to hero: %d\n", nearestEntity ? nearestEntity->id : -1);
-        if (nearestEntity != NULL)
+        if (heroZeroForceWind == true && HAS_ENOUGH_MANA())
         {
-            if (nearestEntity->threat_for != 2 && nearestEntity->health > 10)
+            Point destination = TARGET_WIND_DESTINATION();
+            heroAssignTask(hero, (Task){E_TASK_SPELL_WIND, 0, destination.x, destination.y, destination.x, destination.y});
+            heroZeroForceWind = false;
+            return (true);
+        }
+
+        static int doCanonCombo = false;
+        static int force_entity_to_ennemy_base = false;
+
+        Hero *hero_one = getHeroByID(1);
+        Entity *entitiesNearestToHero = sortEntitiesWithLocationByDistance(_game.monsters, hero->location, HERO_VIEW_DISTANCE);
+        Entity *entitiesCanWind = sortEntitiesWithLocationByDistance(_game.monsters, hero->location, DISTANCE_SPELL_WIND);
+
+        for (size_t i = 0; IS_VALID_ENTITY(entitiesCanWind[i]); i++)
+            fprintf(stderr, "\t- Entity Can Wind [%ld]: %d\n", i, entitiesCanWind->id);
+
+        float distanceHeroOneToHeroZero = DISTANCE(hero_one->location, hero->location);
+        float distanceToEnnemyBase = DISTANCE(hero->location, _game.base_location);
+
+        fprintf(stderr, "\t- Distance Hero One to Hero Zero: %f\n", distanceHeroOneToHeroZero);
+        fprintf(stderr, "\t- Distance to Ennemy Base: %f\n", distanceToEnnemyBase);
+
+        fprintf(stderr, "\t- DoCanonCombo : %d\n", doCanonCombo);
+        fprintf(stderr, "\t- force_entity_to_ennemy_base : %d\n", force_entity_to_ennemy_base);
+        if (doCanonCombo > 0)
+        {
+            Entity *entitiesCanBeWinded = sortEntitiesWithLocationByDistance(_game.monsters, hero->location, DISTANCE_SPELL_WIND);
+            if (HAS_ENOUGH_MANA() && getEntityLength(entitiesCanBeWinded) >= 1)
             {
+                Point destination = TARGET_WIND_DESTINATION();
+                heroAssignTask(hero, (Task){E_TASK_SPELL_WIND, 0, destination.x, destination.y, destination.x, destination.y});
+                doCanonCombo = false;
+                return (true);
+            }
+            else if (DISTANCE(hero->location, ENNEMY_BASE_LOCATION(_game.base_location)) < DISTANCE_SPELL_WIND * 2)
+            {
+                doCanonCombo = false;
+            }
+            else if (entitiesCanBeWinded)
+            {
+                Point destination = ENNEMY_BASE_LOCATION(_game.base_location);
+                heroAssignTask(hero, (Task){E_TASK_MOVE, 0, destination.x, destination.y, 0, 0});
+                return (true);
+            }
+            else
+                doCanonCombo = false;
+        }
+
+        if (force_entity_to_ennemy_base > 0)
+        {
+            Entity *entity_nearest_to_base = findNearestEntityByLocation(entitiesNearestToHero, ENNEMY_BASE_LOCATION(_game.base_location), HERO_VIEW_DISTANCE);
+
+            fprintf(stderr, "\t- ForceEntityToEnnemyBase | Entity Nearest to Base: %d\n", entity_nearest_to_base ? entity_nearest_to_base->id : -1);
+            if (entity_nearest_to_base == NULL && DISTANCE(hero->location, ENNEMY_BASE_LOCATION(_game.base_location)) >= 1200 && force_entity_to_ennemy_base <= 2)
+            {
+                Point destination = ENNEMY_BASE_LOCATION(_game.base_location);
+                fprintf(stderr, "\t- ForceEntityToEnnemyBase | Move to destination: %d %d\n", destination.x, destination.y);
+                heroAssignTask(hero, (Task){E_TASK_MOVE, 0, destination.x, destination.y, 0, 0});
+                force_entity_to_ennemy_base++;
+                return (true);
+            }
+            else if (entity_nearest_to_base != NULL && force_entity_to_ennemy_base >= 3)
+            {
+                Entity *entity = findNearestEntityByLocation(_game.monsters, hero->location, DISTANCE_SPELL_WIND);
+                fprintf(stderr, "\t- ForceEntityToEnnemyBase | Entity Nearest to Hero: %d\n", entity ? entity->id : -1);
+                if (DISTANCE(entity->location, hero->location) <= DISTANCE_SPELL_WIND / 2 && HAS_ENOUGH_MANA())
+                {
+                    Point destination = ENNEMY_BASE_LOCATION(_game.base_location);
+                    heroAssignTask(hero, (Task){E_TASK_SPELL_WIND, 0, destination.x, destination.y, destination.x, destination.y});
+                    return (true);
+                }
+            }
+            else
+                force_entity_to_ennemy_base = 0;
+        }
+
+        // Control nearest heroes
+        if (HAS_ENOUGH_MANA())
+        {
+            Hero *ennemyHeroes = sortEnnemyHeroesByDistanceWithLocation(hero->location, DISTANCE_SPELL_CONTROL);
+            Entity *entitiesNearestToHero = sortEntitiesWithLocationByDistance(_game.monsters, hero->location, HERO_VIEW_DISTANCE);
+            entitiesNearestToHero = sortEntitiesThreatFor(entitiesNearestToHero, 2);
+            ennemyHeroes = sortEnnemyHeroesNotControlled(ennemyHeroes);
+
+            for (size_t i = 0; IS_VALID_HERO(ennemyHeroes[i]); i++)
+                fprintf(stderr, "\t- Ennemy Hero[%ld]: %d\n", i, ennemyHeroes[i].id);
+
+            if (ennemyHeroes && getEntityLength(entitiesNearestToHero) >= 1)
+            {
+                Hero *nearestHero = findNearestEnnemyHeroByLocationWithDistance(hero->location, DISTANCE_SPELL_CONTROL);
+                if (nearestHero)
+                {
+                    Point destination = nearestHero->location;
+                    heroAssignTask(hero, (Task){E_TASK_SPELL_CONTROL, nearestHero->id, 0, 0, 0, 0});
+                    return (true);
+                }
+            }
+        }
+
+        if (HAS_ENOUGH_MANA() && _game.players[PLAYER_OWN].mana >= 20)
+        {
+            fprintf(stderr, "\t- Distance to hero One: %f < %d\n", DISTANCE(hero_one->location, hero->location), (DISTANCE_SPELL_WIND / 2));
+            fprintf(stderr, "\t- EntityLength: %ld\n", entitiesCanWind ? getEntityLength(entitiesCanWind) : -1);
+            if (distanceHeroOneToHeroZero < (DISTANCE_SPELL_WIND / 1.25) &&
+                getEntityLength(entitiesCanWind) > 1 && HAS_ENOUGH_MANA())
+            {
+                fprintf(stderr, "\t- Wind Do combo Canon\n");
+                Point destination = TARGET_WIND_DESTINATION();
+                heroAssignTask(hero, (Task){E_TASK_SPELL_WIND, 0, 0, 0, destination.x, destination.y});
+                doCanonCombo = 1;
+                return (true);
+            }
+        }
+
+        if (HAS_ENOUGH_MANA())
+        {
+            if (getEntityLength(entitiesCanWind) >= 1 &&
+                DISTANCE(hero->location, ENNEMY_BASE_LOCATION(_game.base_location)) <= VIEW_DISTANCE_BASE + (HERO_VIEW_DISTANCE / 4) &&
+                HAS_ENOUGH_MANA())
+            {
+                fprintf(stderr, "\t- Wind Force Entity to base\n");
+                Point destination = ENNEMY_BASE_LOCATION(_game.base_location);
                 heroForceInterruptTask(hero);
-                Point location = ENNEMY_BASE_LOCATION(_game.base_location);
-                heroAssignTask(hero, (Task){E_TASK_SPELL_CONTROL, nearestEntity->id, location.x, location.y, 0, 0});
+                heroAssignTask(hero, (Task){E_TASK_SPELL_WIND, 0, destination.x, destination.y, destination.x, destination.y});
+                force_entity_to_ennemy_base = 1;
                 return (true);
             }
         }
     }
-    else
+    */
+
+    /*
+    else if (hero->id == 0)
     {
-        fprintf(stderr, "\t- Nearest entity: %d\n", nearestEntity ? nearestEntity->id : -1);
-        if (nearestEntity != NULL)
+        Hero *hero_one = getHeroByID(1);
+        Entity *nearestEntity = findNearestEntityByLocation(_game.monsters, hero->location, DISTANCE_SPELL_WIND);
+        Entity *entitiesNearestToHero = sortEntitiesWithLocationByDistance(_game.monsters, hero->location, HERO_VIEW_DISTANCE);
+
+        if (entitiesNearestToHero && getEntityLength(entitiesNearestToHero) == 1)
         {
-            Entity *entitiesInRange = sortEntitiesWithLocationByDistance(_game.monsters, nearestEntity->location, HERO_VIEW_DISTANCE);
-            entitiesInRange = sortEntitiesNotShielded(entitiesInRange);
-
-            if (getEntityLength(entitiesInRange) >= 3)
+            entitiesNearestToHero = sortEntitiesNotShielded(entitiesNearestToHero);
+            entitiesNearestToHero = sortEntitiesNotControled(entitiesNearestToHero);
+            nearestEntity = findNearestEntityByLocation(entitiesNearestToHero, hero->location, DISTANCE_SPELL_CONTROL);
+            fprintf(stderr, "\t- Nearest entity to hero: %d\n", nearestEntity ? nearestEntity->id : -1);
+            if (nearestEntity != NULL)
             {
-                Entity *nearestEntity = findNearestEntityWitHighestLife(entitiesInRange, hero->location, HERO_VIEW_DISTANCE);
-                if (nearestEntity)
-                {
-                    if (DISTANCE(nearestEntity->location, ENNEMY_BASE_LOCATION(_game.base_location)) < (BASE_RANGE / 1.5))
-                    {
-                        fprintf(stderr, "\t- Best entity to shield: %d\n", nearestEntity->id);
-                        heroAssignTask(hero, (Task){E_TASK_SPELL_SHIELD, nearestEntity->id, 0, 0, 0, 0});
-                        return (true);
-                    }
-                }
-            }
-
-            bool entityWillBeInBaseAfterWind = (DISTANCE(nearestEntity->location, ENNEMY_BASE_LOCATION(_game.base_location)) < (BASE_RANGE + DISTANCE_SPELL_WIND));
-            fprintf(stderr, "\t- Distance hero to ennemy base: %f\n", DISTANCE(hero->location, ENNEMY_BASE_LOCATION(_game.base_location)));
-            if (DISTANCE(nearestEntity->location, hero->location) < DISTANCE_SPELL_WIND &&
-                DISTANCE(hero->location, ENNEMY_BASE_LOCATION(_game.base_location)) < (VIEW_DISTANCE_BASE + HERO_VIEW_DISTANCE))
-            {
-                if (HAS_ENOUGH_MANA() && nearestEntity->shield_life <= 0)
-                {
-                    Point destination = ENNEMY_BASE_LOCATION(_game.base_location);
-                    fprintf(stderr, "\t- Spell Wind [2]\n");
-                    heroAssignTask(hero, (Task){E_TASK_SPELL_WIND, 0, 0, 0, destination.x, destination.y});
-                    return (true);
-                }
-            }
-            else if (DISTANCE(hero->location, ENNEMY_BASE_LOCATION(_game.base_location)) >= (VIEW_DISTANCE_BASE + HERO_VIEW_DISTANCE))
-            {
-                entitiesNearestToHero = sortEntitiesNotControled(entitiesNearestToHero);
-                entitiesNearestToHero = sortEntitiesNotShielded(entitiesNearestToHero);
-                entitiesNearestToHero = sortEntitiesByLife(entitiesNearestToHero, 14);
-                entitiesNearestToHero = sortEntitiesNotThreatFor(entitiesNearestToHero, 2);
-                nearestEntity = findNearestEntityByLocation(entitiesNearestToHero, hero->location, DISTANCE_SPELL_CONTROL);
-                if (nearestEntity)
+                if (nearestEntity->threat_for != 2 && nearestEntity->health > 10)
                 {
                     heroForceInterruptTask(hero);
                     Point location = ENNEMY_BASE_LOCATION(_game.base_location);
@@ -1592,45 +1973,98 @@ static bool IA_Attack(Hero *hero)
                 }
             }
         }
-    }
-    Entity *nearestEntityBase = findNearestEntityByLocation(_game.monsters, ENNEMY_BASE_LOCATION(_game.base_location), VIEW_DISTANCE_BASE + HERO_VIEW_DISTANCE);
-    fprintf(stderr, "\t- Nearest entity to base: %d\n", nearestEntityBase ? nearestEntityBase->id : -1);
-    if (nearestEntityBase)
-    {
-        if (nearestEntityBase->health > 14 &&
-            nearestEntityBase->shield_life <= 0 &&
-            DISTANCE(nearestEntityBase->location, ENNEMY_BASE_LOCATION(_game.base_location)) < (VIEW_DISTANCE_BASE / 2) &&
-            HAS_ENOUGH_MANA())
+        else
         {
-            fprintf(stderr, "\t- Spell Shield\n");
-            Point location = ENNEMY_BASE_LOCATION(_game.base_location);
-            heroAssignTask(hero, (Task){E_TASK_SPELL_SHIELD, nearestEntityBase->id, 0, 0, 0, 0});
-            return (true);
+            fprintf(stderr, "\t- Nearest entity: %d\n", nearestEntity ? nearestEntity->id : -1);
+            if (nearestEntity != NULL)
+            {
+                Entity *entitiesInRange = sortEntitiesWithLocationByDistance(_game.monsters, nearestEntity->location, HERO_VIEW_DISTANCE);
+                entitiesInRange = sortEntitiesNotShielded(entitiesInRange);
+
+                if (getEntityLength(entitiesInRange) >= 3)
+                {
+                    Entity *nearestEntity = findNearestEntityWitHighestLife(entitiesInRange, hero->location, HERO_VIEW_DISTANCE);
+                    if (nearestEntity)
+                    {
+                        if (DISTANCE(nearestEntity->location, ENNEMY_BASE_LOCATION(_game.base_location)) < (BASE_RANGE / 1.5))
+                        {
+                            fprintf(stderr, "\t- Best entity to shield: %d\n", nearestEntity->id);
+                            heroAssignTask(hero, (Task){E_TASK_SPELL_SHIELD, nearestEntity->id, 0, 0, 0, 0});
+                            return (true);
+                        }
+                    }
+                }
+
+                bool entityWillBeInBaseAfterWind = (DISTANCE(nearestEntity->location, ENNEMY_BASE_LOCATION(_game.base_location)) < (BASE_RANGE + DISTANCE_SPELL_WIND));
+                fprintf(stderr, "\t- Distance hero to ennemy base: %f\n", DISTANCE(hero->location, ENNEMY_BASE_LOCATION(_game.base_location)));
+                if (DISTANCE(nearestEntity->location, hero->location) < DISTANCE_SPELL_WIND &&
+                    DISTANCE(hero->location, ENNEMY_BASE_LOCATION(_game.base_location)) < (VIEW_DISTANCE_BASE + HERO_VIEW_DISTANCE))
+                {
+                    if (HAS_ENOUGH_MANA() && nearestEntity->shield_life <= 0 &&
+                        DISTANCE(hero_one->location, hero->location) < (DISTANCE_SPELL_WIND / 2))
+                    {
+                        Point destination = ENNEMY_BASE_LOCATION(_game.base_location);
+                        fprintf(stderr, "\t- Spell Wind [2]\n");
+                        heroAssignTask(hero, (Task){E_TASK_SPELL_WIND, 0, 0, 0, destination.x, destination.y});
+                        return (true);
+                    }
+                }
+                else if (DISTANCE(hero->location, ENNEMY_BASE_LOCATION(_game.base_location)) >= (VIEW_DISTANCE_BASE + HERO_VIEW_DISTANCE))
+                {
+                    entitiesNearestToHero = sortEntitiesNotControled(entitiesNearestToHero);
+                    entitiesNearestToHero = sortEntitiesNotShielded(entitiesNearestToHero);
+                    entitiesNearestToHero = sortEntitiesByLife(entitiesNearestToHero, 14);
+                    entitiesNearestToHero = sortEntitiesNotThreatFor(entitiesNearestToHero, 2);
+                    nearestEntity = findNearestEntityByLocation(entitiesNearestToHero, hero->location, DISTANCE_SPELL_CONTROL);
+                    if (nearestEntity)
+                    {
+                        heroForceInterruptTask(hero);
+                        Point location = ENNEMY_BASE_LOCATION(_game.base_location);
+                        heroAssignTask(hero, (Task){E_TASK_SPELL_CONTROL, nearestEntity->id, location.x, location.y, 0, 0});
+                        return (true);
+                    }
+                }
+            }
         }
-        if (nearestEntityBase->health > 10 &&
-            DISTANCE(nearestEntityBase->location, ENNEMY_BASE_LOCATION(_game.base_location)) > (CRITICAL_BASE_RANGE - 300))
+        Entity *nearestEntityBase = findNearestEntityByLocation(_game.monsters, ENNEMY_BASE_LOCATION(_game.base_location), VIEW_DISTANCE_BASE + HERO_VIEW_DISTANCE);
+        fprintf(stderr, "\t- Nearest entity to base: %d\n", nearestEntityBase ? nearestEntityBase->id : -1);
+        if (nearestEntityBase)
         {
-            Point destination = nearestEntityBase->location;
+            if (nearestEntityBase->health > 14 &&
+                nearestEntityBase->shield_life <= 0 &&
+                DISTANCE(nearestEntityBase->location, ENNEMY_BASE_LOCATION(_game.base_location)) < (VIEW_DISTANCE_BASE / 2) &&
+                HAS_ENOUGH_MANA())
+            {
+                fprintf(stderr, "\t- Spell Shield\n");
+                Point location = ENNEMY_BASE_LOCATION(_game.base_location);
+                heroAssignTask(hero, (Task){E_TASK_SPELL_SHIELD, nearestEntityBase->id, 0, 0, 0, 0});
+                return (true);
+            }
+            if (nearestEntityBase->health > 10 &&
+                DISTANCE(nearestEntityBase->location, ENNEMY_BASE_LOCATION(_game.base_location)) > (CRITICAL_BASE_RANGE - 300))
+            {
+                Point destination = nearestEntityBase->location;
+                fprintf(stderr, "Destination: %d, %d\n", destination.x, destination.y);
+                heroAssignTask(hero, (Task){E_TASK_MOVE, 0, destination.x, destination.y});
+                return (true);
+            }
+        }
+
+        float distance_to_ennemie_base = DISTANCE(hero->location, ENNEMY_BASE_LOCATION(_game.base_location));
+        fprintf(stderr, "\t- Distance to ennemie base: %f\n", distance_to_ennemie_base);
+        if (distance_to_ennemie_base > (VIEW_DISTANCE_BASE + HERO_VIEW_DISTANCE))
+        {
+            // Point destination = generateRandomAttackPoint();
+            Point destination = {11880, 8200};
+            if (BASE_IN_TOP_LEFT(_game.base_location) == false)
+                invert_location(&destination, MIN_X, MAX_X, MIN_Y, MAX_Y);
             fprintf(stderr, "Destination: %d, %d\n", destination.x, destination.y);
             heroAssignTask(hero, (Task){E_TASK_MOVE, 0, destination.x, destination.y});
+            heroSetTaskUninterrupted(hero, 0);
             return (true);
         }
     }
-
-    float distance_to_ennemie_base = DISTANCE(hero->location, ENNEMY_BASE_LOCATION(_game.base_location));
-    fprintf(stderr, "\t- Distance to ennemie base: %f\n", distance_to_ennemie_base);
-    if (distance_to_ennemie_base > (VIEW_DISTANCE_BASE + HERO_VIEW_DISTANCE))
-    {
-        // Point destination = generateRandomAttackPoint();
-        Point destination = {11880, 8200};
-        if (BASE_IN_TOP_LEFT(_game.base_location) == false)
-            invert_location(&destination, MIN_X, MAX_X, MIN_Y, MAX_Y);
-        fprintf(stderr, "Destination: %d, %d\n", destination.x, destination.y);
-        heroAssignTask(hero, (Task){E_TASK_MOVE, 0, destination.x, destination.y});
-        heroSetTaskUninterrupted(hero, 0);
-        return (true);
-    }
-
+*/
     // Old IA
     /*
     float distance_to_ennemy_base = DISTANCE(ENNEMY_BASE_LOCATION(_game.base_location), hero->location);
@@ -1734,7 +2168,6 @@ static bool IA_Attack(Hero *hero)
         invert_location(&destination, MIN_X, MAX_X, MIN_Y, MAX_Y);
     // Point destination = generateRandomAttackPoint();
     heroAssignTask(hero, (Task){E_TASK_MOVE, 0, destination.x, destination.y});
-    heroSetTaskUninterrupted(hero, 0);
     return (true);
 }
 
@@ -1750,10 +2183,10 @@ int main()
         {
             Hero *hero = &_game.heroes[i];
 
-            fprintf(stderr, "--- [HERO %d] ---\n", hero->id);
+            fprintf(stderr, "--- [HERO %d] [IA: %d]---\n", hero->id, hero->ia_type);
             fprintf(stderr, " - Current Task: %d\n", hero->task.type);
 
-            if (findNearestEntityByLocation(_game.monsters, hero->location, HERO_VIEW_DISTANCE) != NULL)
+            if (findNearestEntityByLocation(_game.monsters, hero->location, HERO_VIEW_DISTANCE) != NULL || getEnnemyHeroesInBase() > 0)
                 hero->saw_ennemy_first_time = true;
             if (hero->saw_ennemy_first_time == false)
             {
@@ -1763,29 +2196,22 @@ int main()
                 continue;
             }
 
-            // fprintf(stderr, " - Nb Monsters in Base: %ld\n", getNBEntitiesInBase());
+            fprintf(stderr, "\t - Nb Monsters in Base: %ld\n", getNBEntitiesInBase());
+            fprintf(stderr, "\t - NB EnnemyHeroesInBase: %ld\n", getEnnemyHeroesInBase());
             // IA Defense Base [1 / 2]
-            if (getNBEntitiesInBase() > 0 && IS_HERO_DEFENCE(hero))
+            if ((getNBEntitiesInBase() > 0 || getEnnemyHeroesInBase() > 0) && IS_HERO_DEFENCE(hero))
             {
                 if ((IA_DefenseBase(hero)) == true)
                     continue;
                 else
                 {
-                    // fprintf(stderr, "NB MONSTERS: %d\n", _game.nb_monsters);
                     Entity *entities = sortEntitiesNotFocuses(_game.monsters, _game.heroes, hero);
-                    // for (size_t i = 0; !NO_MONSTERS_VIEWED() && IS_VALID_ENTITY(entities[i]); i++)
-                    // fprintf(stderr, "Not focused Entity %d\n", entities[i].id);
-                    // fprintf(stderr, "Try to find a monster to attack\n");
                     Entity *nearest_entity = findNearestEntity(hero, entities, HERO_VIEW_DISTANCE);
-                    // fprintf(stderr, "Nearest Entity: %d\n", nearest_entity ? nearest_entity->id : -1);
-
                     if (nearest_entity == NULL)
                     {
                         if (hero->task.type != E_TASK_MOVE)
                         {
-                            // fprintf(stderr, "No entity found, moving location\n");
                             Point destination = heroGetRandomIADistance(hero);
-                            // fprintf(stderr, "Moving to %d, %d\n", destination.x, destination.y);
                             heroAssignTask(hero, (Task){E_TASK_MOVE, 0, destination.x, destination.y});
                         }
                     }
@@ -1818,20 +2244,24 @@ int main()
                 }
                 else
                 {
-                    fprintf(stderr, "NB MONSTERS: %d\n", _game.nb_monsters);
                     Entity *entities = sortEntitiesNotFocuses(_game.monsters, _game.heroes, hero);
-                    for (size_t i = 0; !NO_MONSTERS_VIEWED() && IS_VALID_ENTITY(entities[i]); i++)
-                        fprintf(stderr, "Not focused Entity %d\n", entities[i].id);
-                    fprintf(stderr, "Try to find a monster to attack\n");
                     Entity *nearest_entity = findNearestEntity(hero, entities, HERO_VIEW_DISTANCE);
-                    fprintf(stderr, "Nearest Entity: %d\n", nearest_entity ? nearest_entity->id : -1);
+                    // Hero *ennemyHero = findNearestHeroByLocationWithDistance(_game.ennemy_heroes, hero->location, HERO_VIEW_DISTANCE);
+
+                    // if (ennemyHero)
+                    // {
+                    //     Point destination = ennemyHero->location;
+                    //     fprintf(stderr, "Moving to %d, %d\n", destination.x, destination.y);
+                    //     heroAssignTask(hero, (Task){E_TASK_MOVE, 0, destination.x, destination.y});
+                    // }
 
                     if (nearest_entity == NULL)
                     {
                         if (hero->task.type != E_TASK_MOVE)
                         {
                             fprintf(stderr, "No entity found, moving location\n");
-                            Point destination = heroGetRandomIADistance(hero);
+                            // Point destination = heroGetRandomIADistance(hero);
+                            Point destination = MAKE_LOCATION(4600, 7000);
                             fprintf(stderr, "Moving to %d, %d\n", destination.x, destination.y);
                             heroAssignTask(hero, (Task){E_TASK_MOVE, 0, destination.x, destination.y});
                         }
@@ -1849,6 +2279,7 @@ int main()
         {
             Hero *hero = &_game.heroes[i];
 
+            fprintf(stderr, "Hero [%d] Task: %d\n", hero->id, hero->task.type);
             heroDoTask(hero);
         }
     }
