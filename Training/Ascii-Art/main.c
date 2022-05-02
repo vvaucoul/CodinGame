@@ -39,14 +39,19 @@ int main()
         fprintf(stderr, "NLetter = %zu\n", nLetter);
         size_t start_letter_x = L * nLetter;
         size_t end_letter_x = start_letter_x + L;
-        size_t start_letter_y = 0;
-        size_t end_letter_y = start_letter_y + H;
 
-        char line[1025];
-        fprintf(stderr, " AROWS + start_letter_x = %s\n", AROWS + start_letter_x);
-        strncpy(line, AROWS + start_letter_x, end_letter_x - start_letter_x);
-        fprintf(stderr, "line = %s\n", line);
-        printf("%s\n", line);
+        for (size_t j = 0; j < H; j++)
+        {
+            char line[1025];
+            size_t start_letter_y = j;
+            size_t end_letter_y = H;
+
+            fprintf(stderr, " end - start = %ld\n", end_letter_x - start_letter_x);
+            strncpy(line, AROWS[start_letter_y] + start_letter_x, end_letter_x - start_letter_x);
+            line[end_letter_x - start_letter_x] = '\0';
+            fprintf(stderr, "line = %s\n", line);
+            printf("%s\n", line);
+        }
     }
 
     return (0);
