@@ -3,56 +3,55 @@
 #include <string.h>
 #include <stdbool.h>
 
-/**
- * Auto-generated code below aims at helping you parse
- * the standard input according to the problem statement.
- **/
+char _AROWS[4096][1025] = {0};
+int L;
+int H;
+
+static char *add_letter(char *line, size_t letter, size_t y)
+{
+    size_t len = strlen(line);
+
+    for (size_t i = 0; i < L; i++)
+    {
+        size_t j = i - (L * letter);
+        line[len + i] = _AROWS[y][letter + i];
+        line[len + i + 1] = '\0';
+    }
+    return (line);
+}
 
 int main()
 {
-    int L;
-    int H;
     scanf("%d", &L);
     scanf("%d", &H);
     fgetc(stdin);
 
     char T[257];
     scanf("%[^\n]", T);
-
-    fprintf(stderr, "T = %s\n", T);
     fgetc(stdin);
-
-    char AROWS[5][1025];
     for (int i = 0; i < H; i++)
     {
         char ROW[1025];
         scanf("%[^\n]", ROW);
         fgetc(stdin);
-        strcpy(AROWS[i], ROW);
-        AROWS[i][L * 26] = '\0';
+        strcpy(_AROWS[i], ROW);
     }
-    for (size_t i = 0; i < 5; i++)
-        fprintf(stderr, "AROWS[%d] = %s\n", i, AROWS[i]);
-    for (size_t i = 0; T[i]; i++)
+    for (size_t y = 0; y < H; y++)
     {
-        size_t nLetter = T[i] - 'A';
-        fprintf(stderr, "NLetter = %zu\n", nLetter);
-        size_t start_letter_x = L * nLetter;
-        size_t end_letter_x = start_letter_x + L;
-
-        for (size_t j = 0; j < H; j++)
+        char *line = malloc(sizeof(char) * 1025);
+        memset(line, 0, 1025);
+        for (size_t x = 0; x < strlen(T); x++)
         {
-            char line[1025];
-            size_t start_letter_y = j;
-            size_t end_letter_y = H;
-
-            fprintf(stderr, " end - start = %ld\n", end_letter_x - start_letter_x);
-            strncpy(line, AROWS[start_letter_y] + start_letter_x, end_letter_x - start_letter_x);
-            line[end_letter_x - start_letter_x] = '\0';
-            fprintf(stderr, "line = %s\n", line);
-            printf("%s\n", line);
+            T[x] = toupper(T[x]);
+            size_t nLetter = T[x] - 'A';
+            if (isalpha(T[x]) == false)
+                nLetter = 26;
+            size_t start_letter_x = L * nLetter;
+            size_t end_letter_x = start_letter_x + L;
+            line = add_letter(line, start_letter_x, y);
         }
+        printf("%s\n", line);
+        free(line);
     }
-
     return (0);
 }
