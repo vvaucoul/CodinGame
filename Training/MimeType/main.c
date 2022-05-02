@@ -8,6 +8,14 @@
  * the standard input according to the problem statement.
  **/
 
+static char *getExtension(char *filename)
+{
+    char *dot = strrchr(filename, '.');
+    if (!dot || dot == filename)
+        return (NULL);
+    return (dot + 1);
+}
+
 int main()
 {
     // Number of elements which make up the association table.
@@ -29,11 +37,8 @@ int main()
         char MT[51];
         scanf("%s%s", EXT, MT);
         fgetc(stdin);
-        fprintf(stderr, "EXT : %s MT : %s\n", EXT, MT);
         strcpy(A_EXT[i], EXT);
-        A_EXT[i + 1][0] = 0;
         strcpy(A_MT[i], MT);
-        A_MT[i + 1][0] = 0;
     }
     for (int i = 0; i < Q; i++)
     {
@@ -41,16 +46,33 @@ int main()
         char FNAME[257];
         scanf("%[^\n]", FNAME);
         fgetc(stdin);
-        fprintf(stderr, "FNAME : %s\n", FNAME);
         strcpy(A_FNAME[i], FNAME);
-        A_FNAME[i + 1][0] = 0;
     }
 
-    for (size_t i = 0; A_FNAME[i]; i++)
+    fprintf(stderr, "N : %d Q : %d\n\n\n", N, Q);
+    bool found = false;
+    for (size_t i = 0; i < Q; i++)
     {
+        found = false;
+        fprintf(stderr, "FNAME : %s\n", A_FNAME[i]);
+        char *extension = getExtension(A_FNAME[i]);
+        fprintf(stderr, "extension : %s\n", extension);
+        if (extension)
+        {
+            for (size_t j = 0; j < N; j++)
+            {
+                fprintf(stderr, "EXT : %s\n", A_EXT[j]);
+                if (strcmp(extension, A_EXT[j]) == 0)
+                {
+                    printf("%s\n", A_MT[j]);
+                    found = true;
+                    fprintf(stderr, "FOUND : %s\n", A_MT[j]);
+                }
+            }
+        }
+        if (found == false)
+            printf("UNKNOWN\n");
     }
 
-    printf("UNKNOWN\n");
-
-    return 0;
+    return (0);
 }
