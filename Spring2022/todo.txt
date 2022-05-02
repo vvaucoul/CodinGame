@@ -42,3 +42,11 @@ Gold : Forcément 2 attaquants -> strat cannon
     - Defense: 
         - Si un hero ennemie est dans la base, se déplace vers lui
         - si un monstre est plus proche par rapport à la base, se déplace vers le monstre
+
+- Strat Gold: avec 2 defenseurs
+    Link : https://www.codingame.com/replay/630583522
+    - Defense:  [1] : se déplace au coordonnées 11140 5159
+                [2] : se déplace vers le spawn des monstres le plus proche en haut si joueur 2 sinon en bas (13910 1783)
+
+                - essaient toujours de controle le monstre avant qu'il atteigne la base
+                
