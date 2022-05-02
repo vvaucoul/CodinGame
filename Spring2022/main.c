@@ -1368,30 +1368,6 @@ static bool IA_DefenseBase(Hero *hero)
         break;
     } while (1);
 
-    /*
-    // Follow Ennemy Hero
-    do
-    {
-        fprintf(stderr, "--- FOLLOW ENNEMY HERO ---\n");
-        Hero *ennemyHero = sortEnnemyHeroesByDistanceWithLocation(_game.base_location, VIEW_DISTANCE_BASE + HERO_VIEW_DISTANCE);
-        Entity *entitiesInBase = sortEntitiesWithLocationByDistance(_game.monsters, _game.base_location, VIEW_DISTANCE_BASE);
-        entitiesInBase = sortEntitiesNotThreatFor(entitiesInBase, 1);
-        if (ennemyHero == NULL)
-            break;
-        else
-        {
-            fprintf(stderr, "\t- NB monsters in Base: %ld\n", getEntityLength(entitiesInBase));
-            if (getEntityLength(entities_in_base) <= 0)
-            {
-                fprintf(stderr, "\t- Follow Ennemy Hero : %d\n", ennemyHero->id);
-                heroAssignTask(hero, (Task){E_TASK_MOVE, ennemyHero->id, ennemyHero->location.x, ennemyHero->location.y, 0, 0});
-                return (true);
-            }
-        }
-        break;
-    } while (1);
-    */
-
     // Target Ennemy
     {
         Entity *entitiesThreatForBase = sortEntitiesWillReachDistance(entitiesHeroSee, _game.base_location, VIEW_DISTANCE_BASE);
