@@ -17,6 +17,7 @@ int main()
     fgetc(stdin);
     char T[257];
     scanf("%[^\n]", T);
+    fprintf(stderr, "T = %s\n", T);
     fgetc(stdin);
     for (int i = 0; i < H; i++)
     {
