@@ -747,7 +747,6 @@ Point getEntityLocationAfterWind(Entity *entity, Point wind_destination, float d
     Point destination;
     Point start = entity->location;
     float angle = atan2(start.y - wind_destination.y, start.x - wind_destination.x) * 180 / M_PI;
-    // float angle = fmod(atan2(start.x * wind_destination.y - wind_destination.x * start.y, start.x * wind_destination.x + start.y * wind_destination.y), 2 * M_PI) * 180 / M_PI;
     fprintf(stderr, "\t - Angle : %f\n", angle);
     fprintf(stderr, "\t - Distance : %f\n", distance);
     fprintf(stderr, "\t - Angle [0 - 360] : %f\n", angle * M_PI / 180);
@@ -942,16 +941,12 @@ Point heroGetRandomIADistance(Hero *hero)
             Point random = generateRandomPointInCircle((Point){6500, 1500}, (HERO_VIEW_DISTANCE));
             deffensive_location.x = random.x;
             deffensive_location.y = random.y;
-            // deffensive_location.x = RANDOM((int)(MAX_X / 2.5), (int)(MAX_X / 1.75));
-            // deffensive_location.y = RANDOM((int)(MAX_Y / 8), (int)(MAX_Y / 3));
         }
         else
         {
             Point random = generateRandomPointInCircle((Point){6500, 1500}, HERO_VIEW_DISTANCE);
             deffensive_location.x = random.x;
             deffensive_location.y = random.y;
-            // deffensive_location.x = RANDOM((int)(MAX_X / 4), (int)(MAX_X / 2));
-            // deffensive_location.y = RANDOM((int)(MAX_Y / 6), (int)(MAX_Y / 2));
         }
         if (_game.base_in_top_left == false)
             invert_location(&deffensive_location, MIN_X, MAX_X, MIN_Y, MAX_Y);
@@ -966,17 +961,12 @@ Point heroGetRandomIADistance(Hero *hero)
             Point random = generateRandomPointInCircle((Point){3000, 6000}, (HERO_VIEW_DISTANCE));
             deffensive_location.x = random.x;
             deffensive_location.y = random.y;
-            // deffensive_location.x = RANDOM((int)(MAX_X / 4), (int)(MAX_X / 2));
-            // deffensive_location.y = RANDOM((int)(MAX_Y / 1.75), (int)(MAX_Y / 1.25));
         }
         else
         {
             Point random = generateRandomPointInCircle((Point){3000, 6000}, HERO_VIEW_DISTANCE);
             deffensive_location.x = random.x;
             deffensive_location.y = random.y;
-
-            // deffensive_location.x = RANDOM((int)(MAX_X / 6), (int)(MAX_X / 3));
-            // deffensive_location.y = RANDOM((int)(MAX_Y / 2), (int)(MAX_Y / 1.25));
         }
 
         if (_game.base_in_top_left == false)
@@ -1253,181 +1243,6 @@ static void init_game_values()
 // IA GAME Functions
 static bool IA_DefenseBase(Hero *hero)
 {
-    // Code - Defense Base systeme poids
-    /*
-    TPair best_actions[6];
-
-    for (size_t i = 0; i < 6; i++)
-    {
-        memset(&best_actions[i], 0, sizeof(TPair));
-        best_actions[i].task.type = i;
-    }
-
-    Entity *entities_in_base = sortEntitiesWithLocationByDistance(_game.monsters, _game.base_location, VIEW_DISTANCE_BASE);
-    Entity *entities_in_view_range = sortEntitiesWithLocationByDistance(_game.monsters, hero->location, HERO_VIEW_DISTANCE);
-    Entity *entity_nearest_to_base = findNearestEntityByLocation(entities_in_base, _game.base_location, VIEW_DISTANCE_BASE);
-
-    for (size_t i = 0; i < 6; i++)
-    {
-        if (i == E_TASK_WAIT) // ignore (inutile de wait)
-        {
-            best_actions[i].value = 0;
-            continue;
-        }
-        else if (i == E_TASK_MOVE) // ignore (les movements sont effectues apres)
-        {
-            best_actions[i].value = 0;
-            continue;
-        }
-        else if (i == E_TASK_ATTACK)
-        {
-            TPair best_monster = {0, 0};
-
-            Entity *entities_in_base_to_attack = entities_in_base;
-            Entity *entity_to_target = NULL;
-            int nb_monster_in_base = getEntityLength(entities_in_base);
-
-            for (size_t j = 0; IS_VALID_ENTITY(entities_in_base_to_attack[j]); j++)
-            {
-                // fprintf(stderr, "--- ATTACK ---\n");
-                Entity *ce = &entities_in_base_to_attack[j];
-                float value = 0;
-
-                Hero *neh = findNearestEnnemyHeroToEntity(ce);
-
-                float distance_entity = DISTANCE(hero->location, ce->location);
-                bool monster_is_in_range = distance_entity <= HERO_VIEW_DISTANCE;
-
-                float ennemy_hero_distance_to_monster = neh == NULL ? 0 : DISTANCE(neh->location, ce->location);
-                bool ennemy_hero_is_in_range = ennemy_hero_distance_to_monster <= HERO_VIEW_DISTANCE;
-
-                bool monster_threat_to_base = ce->threat_for == 1;
-                bool monster_near_to_base = ce->near_base == 1;
-
-                float distance_to_border_base = DISTANCE(ce->location, _game.base_location) - BASE_RANGE < 0 ? 0 : DISTANCE(ce->location, _game.base_location) - BASE_RANGE;
-                float distance_to_base = DISTANCE(ce->location, _game.base_location);
-
-                size_t nb_turn_entity_will_reach_base = TURN_TO_REACH_BASE(ce);
-
-                // fprintf(stderr, "\t - Distance to monster %d : %f\n", ce->id, distance_entity);
-                // fprintf(stderr, "\t - Monster is in range : %d\n", monster_is_in_range);
-                // fprintf(stderr, "\t - Ennemy hero distance to monster %d : %f\n", ce->id, ennemy_hero_distance_to_monster);
-                // fprintf(stderr, "\t - Ennemy hero is in range : %d\n", ennemy_hero_is_in_range);
-                // fprintf(stderr, "\t - Monster threat to base : %d\n", monster_threat_to_base);
-                // fprintf(stderr, "\t - Monster near to base : %d\n", monster_near_to_base);
-                // fprintf(stderr, "\t - Distance to border base : %f\n", distance_to_border_base);
-                // fprintf(stderr, "\t - Distance to base : %f\n", distance_to_base);
-                // fprintf(stderr, "\t - Ennemy hero : %d\n", neh == NULL ? -1 : neh->id);
-                // fprintf(stderr, "\t - Nb turn entity will reach base : %ld\n", nb_turn_entity_will_reach_base);
-
-                value += invert_value(distance_entity / (HERO_VIEW_DISTANCE / 2), 0, 2); // 0 - 2
-                value += (monster_is_in_range ? 1 : 0) * 1;
-                value += (ennemy_hero_is_in_range ? 1 : 0) * 1;
-                value += ennemy_hero_distance_to_monster > 0 && ennemy_hero_distance_to_monster < HERO_VIEW_DISTANCE ? invert_value(ennemy_hero_distance_to_monster / (HERO_VIEW_DISTANCE / 2), 0, 2) * 1.25 : 0; // 0 - 2
-                value += (monster_threat_to_base ? 1 : 0) * 2;
-                value += (monster_near_to_base ? 1 : 0) * 2;
-                value += invert_value(distance_to_border_base, 0, 1000) / 1000;            // 0 - 1
-                value += (invert_value(distance_to_base, 0, BASE_RANGE) / BASE_RANGE) * 2; // 0 - 1
-                value += (invert_value(nb_turn_entity_will_reach_base, 0, 12) / 12) * 2;   // a debug
-                value = value < 0 ? value * -1 : value;
-
-                // fprintf(stderr, "\n\t - Value : %f\n", value);
-                if (value > best_monster.value && value > MIN_VALUE_TO_ACCEPT_WEIGHT)
-                {
-                    best_monster.task.type = E_TASK_ATTACK;
-                    best_monster.value = value;
-                    best_monster.task.target_id = ce->id;
-                    // fprintf(stderr, "\t - Assign value : %f\n", value);
-                }
-            }
-
-            best_actions[i].value = best_monster.value;
-            best_actions[i].task = best_monster.task;
-            // fprintf(stderr, "\t - Continue : %f\n", best_monster.value);
-            continue;
-        }
-        else if (i == E_TASK_SPELL_WIND)
-        {
-            continue;
-            // fprintf(stderr, "--- SPELL WIND ---\n");
-            Entity *entities_in_range_to_wind = sortEntitiesWithLocationByDistance(_game.monsters, hero->location, DISTANCE_SPELL_WIND);
-            Entity *entities_not_shielded = sortEntitiesNotShielded(entities_in_range_to_wind);
-
-            Hero *A_neh = sortEnnemyHeroesByDistanceWithLocation(hero->location, DISTANCE_SPELL_WIND);
-
-            float distance_entities_to_base = 0;
-            size_t level_total_entities = 0;
-
-            size_t j = 0;
-            for (j = 0; IS_VALID_ENTITY(entities_in_range_to_wind[j]); j++)
-            {
-                distance_entities_to_base += DISTANCE(entities_in_range_to_wind[j].location, _game.base_location);
-                level_total_entities += ENTITY_LEVEL(entities_in_range_to_wind[j]);
-            }
-            if (distance_entities_to_base > 0)
-                distance_entities_to_base /= j;
-            if (level_total_entities != 0)
-                level_total_entities /= j;
-
-            float value = 0;
-
-            int nb_ennemies_affected_by_wind = getEntityLength(entities_in_range_to_wind);
-            int nb_ennemies_affected_by_wind_not_shielded = getEntityLength(entities_not_shielded);
-
-            // fprintf(stderr, "\t - Distance to base : %f\n", distance_entities_to_base);
-            // fprintf(stderr, "\t - Number of monsters affected by wind : %d\n", nb_ennemies_affected_by_wind);
-            // fprintf(stderr, "\t - Number of monsters affected by wind not shielded : %d\n", nb_ennemies_affected_by_wind_not_shielded);
-            // fprintf(stderr, "\t - Level total entities : %ld\n", level_total_entities);
-
-            if (nb_ennemies_affected_by_wind == 0)
-            {
-                best_actions[i].task.type = E_TASK_SPELL_WIND;
-                best_actions[i].task.target_id = -1;
-                best_actions[i].task.spell_vector = ENNEMY_BASE_LOCATION(_game.base_location);
-                best_actions[i].value = 0;
-                continue;
-            }
-
-            value += (nb_ennemies_affected_by_wind);
-            value += nb_ennemies_affected_by_wind_not_shielded;
-            // value += log(invert_value(distance_entities_to_base, 300, BASE_RANGE) / (BASE_RANGE / 2) * 2);
-            value += log(distance_entities_to_base);
-            // fprintf(stderr, "\t - Value: %f\n", invert_value(distance_entities_to_base, 300, BASE_RANGE) / (BASE_RANGE / 2) * 2);
-            // fprintf(stderr, "\t - Log : %f\n", log(invert_value(distance_entities_to_base, 300, BASE_RANGE) / (BASE_RANGE / 2) * 2));
-            // fprintf(stderr, "\t - Log without invert: %f\n", log(distance_entities_to_base)); // checker si le monstre est bien dans la base
-            value += (level_total_entities / 4) * 2;
-            value = value < 0 ? value * -1 : value;
-
-            // UTILISER LES LOG ! log(value)
-
-            // fprintf(stderr, "\n\t - Value : %f\n", value);
-
-            // tmp le temps de changer
-            value = 0;
-            best_actions[i].task.type = E_TASK_SPELL_WIND;
-            best_actions[i].task.target_id = -1;
-            best_actions[i].task.spell_vector = ENNEMY_BASE_LOCATION(_game.base_location);
-
-            if (value > MIN_VALUE_TO_ACCEPT_WEIGHT)
-                best_actions[i].value = value;
-            else
-                best_actions[i].value = 0;
-            continue;
-        }
-        else if (i == E_TASK_SPELL_SHIELD)
-        {
-            best_actions[i].value = 0;
-            continue;
-        }
-        else if (i == E_TASK_SPELL_CONTROL)
-        {
-            int nb_ennemies_heroes_in_range = 0;
-            best_actions[i].value = 0;
-            continue;
-        }
-    }
-    */
-
     Point defenseLocation = generateDefensePoint(hero);
 
     fprintf(stderr, "--- IA DEFENSE ---\n");
@@ -1772,9 +1587,6 @@ int main()
 
             fprintf(stderr, "\t - Nb Monsters in Base: %ld\n", getNBEntitiesInBase());
             fprintf(stderr, "\t - NB EnnemyHeroesInBase: %ld\n", getEnnemyHeroesInBase());
-            // IA Defense Base [1 / 2]
-            // if ((getNBEntitiesInBase() > 0 || getEnnemyHeroesInBase() > 0) && IS_HERO_DEFENCE(hero))
-            // {
             if (IS_HERO_DEFENCE(hero) == true)
             {
                 if ((IA_DefenseBase(hero)) == true)
@@ -1799,7 +1611,6 @@ int main()
             else
             {
                 Entity *entities = sortEntitiesWithLocationByDistance(_game.monsters, hero->location, HERO_VIEW_DISTANCE);
-                // Entity *nearest_entity = findNearestEntityByLocation(entities, _game.base_location, (MAX_X + MAX_Y));
                 Entity *nearest_entity = findNearestEntityByLocation(entities, MAKE_LOCATION(7790, 5574), HERO_VIEW_DISTANCE);
 
                 if (nearest_entity == NULL)
@@ -1818,7 +1629,6 @@ int main()
                     continue;
                 }
             }
-            // }
         }
 
         for (int i = 0; i < _game.nb_heroes; i++)
@@ -1829,6 +1639,5 @@ int main()
             heroDoTask(hero);
         }
     }
-
     return 0;
 }
