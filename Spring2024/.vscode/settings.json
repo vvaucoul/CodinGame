@@ -1,0 +1,16 @@
+{
+    "files.associations": {
+        "*.s": "nasm",
+        "*.ld": "mapfile",
+        "deque": "c",
+        "string": "c",
+        "vector": "c",
+        "*.tcc": "c",
+        "string_view": "c",
+        "algorithm": "c",
+        "random": "c",
+        "istream": "c",
+        "limits": "c",
+        "numeric": "c"
+    }
+}
